@@ -1,0 +1,34 @@
+.floating-cart-button {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  transition: transform 0.2s, background-color 0.2s;
+  z-index: 1000;
+}
+
+.floating-cart-button:hover {
+  transform: scale(1.1);
+  background-color: #0056b3;
+}
+
+@media (max-width: 768px) {
+  .floating-cart-button {
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+} 
