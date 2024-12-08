@@ -1,0 +1,33 @@
+.manage-users {
+  padding: 20px;
+}
+
+.manage-users h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.manage-users ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.manage-users li {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.manage-users button {
+  margin-left: 10px;
+  padding: 5px 10px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+}
+
+.manage-users button:hover {
+  background-color: #0056b3;
+}

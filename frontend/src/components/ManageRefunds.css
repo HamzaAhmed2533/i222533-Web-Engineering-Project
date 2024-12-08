@@ -1,0 +1,33 @@
+.manage-refunds {
+  padding: 20px;
+}
+
+.manage-refunds h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.manage-refunds ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.manage-refunds li {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.manage-refunds button {
+  margin-left: 10px;
+  padding: 5px 10px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+}
+
+.manage-refunds button:hover {
+  background-color: #0056b3;
+}

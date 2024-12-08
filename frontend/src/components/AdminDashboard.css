@@ -1,0 +1,26 @@
+.admin-dashboard {
+  padding: 20px;
+}
+
+.admin-dashboard h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.admin-dashboard ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.admin-dashboard li {
+  margin-bottom: 10px;
+}
+
+.admin-dashboard a {
+  text-decoration: none;
+  color: #007bff;
+}
+
+.admin-dashboard a:hover {
+  text-decoration: underline;
+}

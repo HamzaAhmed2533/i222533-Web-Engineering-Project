@@ -1,0 +1,10 @@
+.refund-reports {
+  padding: 20px;
+}
+
+.refund-reports h1 {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+/* Add more styles based on the reports data structure */
