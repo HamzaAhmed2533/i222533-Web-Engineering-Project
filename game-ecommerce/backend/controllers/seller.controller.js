@@ -1,39 +1,36 @@
+const mongoose = require('mongoose');
 const Product = require('../models/product.model');
+const Sales = require('../models/sales.model');
 const asyncHandler = require('../middleware/async');
 const ErrorResponse = require('../utils/errorHandler');
-const Sales = require('../models/sales.model');
-const mongoose = require('mongoose');
 
-// @desc    Get seller dashboard stats
-// @route   GET /api/seller/stats
-// @access  Private/Seller
 exports.getSellerStats = asyncHandler(async (req, res, next) => {
     try {
         const sellerId = new mongoose.Types.ObjectId(req.user._id);
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth() + 1;
-        const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-        const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+        
+        // Debug log
+        console.log('Fetching stats for seller:', sellerId);
 
-    // Get total products (excluding deleted)
-    const totalProducts = await Product.countDocuments({ 
-        seller: sellerId,
-        status: { $ne: 'deleted' }
-    });
-
-        // Get current month's sales data
-        const currentMonthSales = await Sales.findOne({
+        // Get total products (excluding deleted)
+        const totalProducts = await Product.countDocuments({ 
             seller: sellerId,
-            year: currentYear,
-            month: currentMonth
+            status: { $ne: 'deleted' }
         });
 
-        // Get last month's sales data
-        const lastMonthSales = await Sales.findOne({
-            seller: sellerId,
-            year: lastMonthYear,
-            month: lastMonth
+        console.log('Total products:', totalProducts);
+
+        // Get all sales data for this seller - simplified query first
+        const salesData = await Sales.find({ seller: sellerId });
+        
+        console.log('Sales data found:', salesData);
+
+        // Calculate totals manually instead of using aggregation
+        let totalUnitsSold = 0;
+        let totalMoneyEarned = 0;
+
+        salesData.forEach(sale => {
+            totalUnitsSold += sale.totalUnits || 0;
+            totalMoneyEarned += sale.totalRevenue || 0;
         });
 
         // Get product type distribution
@@ -54,15 +51,19 @@ exports.getSellerStats = asyncHandler(async (req, res, next) => {
 
         const stats = {
             totalProducts,
-            totalSales: currentMonthSales?.totalSales || 0,
-            totalRevenue: currentMonthSales?.totalRevenue || 0,
-            lastMonthSales: lastMonthSales?.totalSales || 0,
-            lastMonthRevenue: lastMonthSales?.totalRevenue || 0,
+            totalRevenue: totalUnitsSold || 0,                 // Number of units sold
+            totalSales: totalMoneyEarned?.toFixed(2) || 0,    // Money earned
+            currentMonthSales: 0,  // We'll add these back once basic stats work
+            currentMonthRevenue: 0,
+            lastMonthSales: 0,
+            lastMonthRevenue: 0,
             productTypes: productTypes.reduce((acc, type) => {
                 acc[type._id] = type.count;
                 return acc;
             }, {})
         };
+
+        console.log('Final stats:', stats);
 
         res.status(200).json({
             success: true,
@@ -72,4 +73,28 @@ exports.getSellerStats = asyncHandler(async (req, res, next) => {
         console.error('Seller Stats Error:', error);
         return next(new ErrorResponse('Failed to fetch seller statistics', 500));
     }
-}); 
+});
+
+exports.getSellerAnalytics = asyncHandler(async (req, res, next) => {
+    try {
+        const sellerId = new mongoose.Types.ObjectId(req.user._id);
+        
+        // Return placeholder data for now
+        res.status(200).json({
+            success: true,
+            data: {
+                monthlySales: [],
+                productPerformance: [],
+                categoryDistribution: {},
+                revenueStats: {
+                    totalRevenue: 0,
+                    averageOrderValue: 0,
+                    monthlyGrowth: 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Analytics Error:', error);
+        return next(new ErrorResponse('Failed to fetch analytics data', 500));
+    }
+});

@@ -37,79 +37,105 @@ const cartController = {
     const { productId } = req.params;
     const { quantity = 1 } = req.body;
 
-    // Check if product exists and is active
-    const product = await Product.findOne({ _id: productId, status: 'active' });
+    console.log('Request to add product:', {
+        productId,
+        quantity,
+        userId: req.user._id
+    });
+
+    // First try to find product without status filter to debug
+    const productCheck = await Product.findById(productId)
+        .select('name type category status stock price onSale specifications');
+    console.log('Raw product check:', productCheck);
+
+    // Then check with proper status and conditions
+    const product = await Product.findOne({ 
+        _id: productId,
+        status: 'active'
+    }).select('name type category status stock price onSale.isOnSale onSale.salePrice specifications');
+
+    console.log('Found product:', {
+        exists: !!product,
+        status: product?.status,
+        name: product?.name,
+        type: product?.type,
+        stock: product?.stock,
+        isDigital: product?.type === 'digital_game'
+    });
+
     if (!product) {
-      return next(new ErrorResponse('Product not found or inactive', 404));
+        return next(new ErrorResponse(
+            `Product not found or inactive. ID: ${productId}`, 
+            404
+        ));
     }
 
-    // Only check stock for physical products
+    // Only check stock for non-digital products
     if (product.type !== 'digital_game' && quantity > product.stock) {
-      return next(new ErrorResponse(
-        `Insufficient stock. Requested: ${quantity}, Available: ${product.stock}`,
-        400
-      ));
+        return next(new ErrorResponse(
+            `Insufficient stock. Requested: ${quantity}, Available: ${product.stock}`,
+            400
+        ));
     }
 
     let cart = await Cart.findOne({ user: req.user._id });
     if (!cart) {
-      cart = await Cart.create({
-        user: req.user._id,
-        items: [],
-        totalAmount: 0
-      });
+        cart = await Cart.create({
+            user: req.user._id,
+            items: [],
+            totalAmount: 0
+        });
     }
 
     // Check if product already in cart
     const existingItem = cart.items.find(
-      item => item.product.toString() === productId
+        item => item.product.toString() === productId
     );
 
     if (existingItem) {
-      // For physical products, check stock
-      if (product.type !== 'digital_game') {
-        const newQuantity = existingItem.quantity + parseInt(quantity);
-        if (newQuantity > product.stock) {
-          return next(new ErrorResponse(
-            `Cannot add ${quantity} more units. Current cart: ${existingItem.quantity}, Available stock: ${product.stock}`,
-            400
-          ));
+        // For physical products, check stock
+        if (product.type !== 'digital_game') {
+            const newQuantity = existingItem.quantity + parseInt(quantity);
+            if (newQuantity > product.stock) {
+                return next(new ErrorResponse(
+                    `Cannot add ${quantity} more units. Current cart: ${existingItem.quantity}, Available stock: ${product.stock}`,
+                    400
+                ));
+            }
         }
-      }
-      existingItem.quantity = existingItem.quantity + parseInt(quantity);
+        existingItem.quantity = existingItem.quantity + parseInt(quantity);
     } else {
-      cart.items.push({
-        product: productId,
-        quantity: parseInt(quantity)
-      });
+        cart.items.push({
+            product: productId,
+            quantity: parseInt(quantity)
+        });
     }
 
-    // Calculate total amount with proper error handling
+    // Calculate total amount
     let totalAmount = 0;
     for (const item of cart.items) {
-      const product = await Product.findById(item.product);
-      if (product) {
-        const price = product.onSale && product.salePrice ? product.salePrice : product.price;
-        const itemTotal = price * parseInt(item.quantity);
-        if (!isNaN(itemTotal)) {
-          totalAmount += itemTotal;
+        const itemProduct = await Product.findById(item.product);
+        if (itemProduct) {
+            const price = itemProduct.onSale?.isOnSale && itemProduct.onSale?.salePrice 
+                ? itemProduct.onSale.salePrice 
+                : itemProduct.price;
+            totalAmount += price * item.quantity;
         }
-      }
     }
 
-    // Ensure totalAmount is a valid number
-    cart.totalAmount = totalAmount || 0;
-
+    cart.totalAmount = totalAmount;
     await cart.save();
+
+    // Populate cart items before sending response
     await cart.populate({
-      path: 'items.product',
-      select: 'name price images type category status stock onSale salePrice'
+        path: 'items.product',
+        select: 'name price images type category status stock onSale specifications'
     });
 
     res.status(200).json({
-      success: true,
-      message: 'Product added to cart',
-      data: cart
+        success: true,
+        message: 'Product added to cart',
+        data: cart
     });
   }),
 

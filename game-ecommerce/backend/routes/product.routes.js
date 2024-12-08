@@ -6,8 +6,9 @@ const { authorize } = require('../middleware/auth');
 
 // Public routes for buyers
 router.get('/', productController.getProducts);
-router.get('/:id', productController.getProduct);
 router.get('/all', productController.getAllProducts);
+router.get('/:id', productController.getProduct);
+
 router.get('/top-selling', productController.getTopSellingProducts);
 router.get('/highest-rated', productController.getHighestRatedProducts);
 router.get('/recommendations', protect, productController.getPersonalizedRecommendations);
@@ -26,5 +27,8 @@ router.delete('/ratings/:ratingId', protect, authorize('buyer'), productControll
 
 // Protected seller routes
 router.get('/seller/my-products', protect, productController.getSellerProducts);
+
+// Create product route - needs both authentication and seller authorization
+router.post('/', protect, authorize('seller'), productController.createProduct);
 
 module.exports = router;

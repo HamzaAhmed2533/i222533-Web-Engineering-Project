@@ -732,6 +732,24 @@ const productController = {
       success: true,
       data: products
     });
+  }),
+
+  getAllProducts: asyncHandler(async (req, res, next) => {
+    try {
+        // Get all active products (not deleted)
+        const products = await Product.find({ 
+            status: { $ne: 'deleted' } 
+        }).populate('seller', 'name email');
+
+        res.status(200).json({
+            success: true,
+            count: products.length,
+            data: products
+        });
+    } catch (error) {
+        console.error('Get All Products Error:', error);
+        return next(new ErrorResponse('Failed to fetch products', 500));
+    }
   })
 };
 
