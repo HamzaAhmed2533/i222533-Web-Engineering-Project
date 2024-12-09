@@ -10,7 +10,9 @@ const productController = {
   createProduct: asyncHandler(async (req, res, next) => {
     try {
       let productData = req.body;
-      
+      console.log('Creating product with data:', productData);
+      console.log('Files received:', req.files);
+
       // Parse specifications if it's a string
       if (typeof productData.specifications === 'string') {
         productData.specifications = JSON.parse(productData.specifications);
@@ -35,31 +37,24 @@ const productController = {
         };
       }
 
-      // Handle image uploads with optimization
+      // Handle image uploads
       const uploadedImages = [];
       if (req.files && req.files.images) {
-        const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
-        
-        for (const file of images) {
-          // Optimize image before upload
-          const optimizedImageBuffer = await sharp(file.tempFilePath)
-            .resize(1200, 1200, { // Max dimensions
-              fit: 'inside',
-              withoutEnlargement: true
-            })
-            .jpeg({ quality: 80 }) // Convert to JPEG with 80% quality
-            .toBuffer();
+        const images = Array.isArray(req.files.images) 
+          ? req.files.images 
+          : [req.files.images];
 
-          // Upload optimized image to Cloudinary
-          const result = await cloudinary.uploader.upload(`data:image/jpeg;base64,${optimizedImageBuffer.toString('base64')}`, {
-            folder: 'game-ecommerce/products',
-            resource_type: 'auto'
-          });
-          
-          uploadedImages.push({
-            url: result.secure_url,
-            public_id: result.public_id
-          });
+        console.log('Processing images:', images.length);
+
+        for (const file of images) {
+          try {
+            const result = await handleImageUpload(file);
+            uploadedImages.push(result);
+            console.log('Image uploaded successfully:', result);
+          } catch (error) {
+            console.error('Failed to upload image:', error);
+            // Continue with other images if one fails
+          }
         }
       }
 
@@ -70,6 +65,8 @@ const productController = {
       });
 
       await product.save();
+      console.log('Product saved successfully:', product);
+
       res.status(201).json({
         success: true,
         data: product
@@ -139,6 +136,28 @@ const productController = {
       return next(new ErrorResponse(`Product not found with id of ${req.params.id}`, 404));
     }
 
+    // Check if we need to reset monthly sales
+    if (product.sales?.lastMonthUpdated) {
+      const lastUpdate = new Date(product.sales.lastMonthUpdated);
+      const currentDate = new Date();
+      if (lastUpdate.getMonth() !== currentDate.getMonth() || 
+          lastUpdate.getFullYear() !== currentDate.getFullYear()) {
+        product.sales.lastMonth = 0;
+        product.sales.lastMonthUpdated = currentDate;
+        await product.save();
+      }
+    }
+
+    // Recalculate rating average if needed
+    if (product.ratings?.length > 0) {
+      const totalRating = product.ratings.reduce((sum, r) => sum + r.rating, 0);
+      product.rating = {
+        average: totalRating / product.ratings.length,
+        count: product.ratings.length
+      };
+      await product.save();
+    }
+
     res.status(200).json({
       success: true,
       data: product
@@ -147,91 +166,78 @@ const productController = {
 
   // Update product
   updateProduct: asyncHandler(async (req, res, next) => {
+    console.log('Update Product Request:', {
+      id: req.params.id,
+      body: req.body,
+      files: req.files
+    });
+
     try {
-      let productData = req.body;
-      
-      // Parse specifications if it's a string
-      if (typeof productData.specifications === 'string') {
-        productData.specifications = JSON.parse(productData.specifications);
-      }
-
-      // Set specifications based on product type
-      if (productData.type === 'digital_game' || productData.type === 'physical_game') {
-        productData.specifications = {
-          platform: productData.specifications.platform || [],
-          genre: productData.specifications.genre || [],
-          releaseDate: productData.specifications.releaseDate || new Date(),
-          brand: undefined,
-          model: undefined
-        };
-      } else {
-        productData.specifications = {
-          platform: undefined,
-          genre: undefined,
-          releaseDate: undefined,
-          brand: productData.specifications.brand || '',
-          model: productData.specifications.model || ''
-        };
-      }
-
       const product = await Product.findById(req.params.id);
-
+      
       if (!product) {
         return next(new ErrorResponse('Product not found', 404));
       }
 
+      // Check if user is the seller
       if (product.seller.toString() !== req.user._id.toString()) {
         return next(new ErrorResponse('Not authorized to update this product', 403));
       }
 
-      // Handle image uploads with optimization
+      // Parse specifications if it's a string
+      if (typeof req.body.specifications === 'string') {
+        req.body.specifications = JSON.parse(req.body.specifications);
+      }
+
+      // Handle image upload if there are new images
       if (req.files && req.files.images) {
-        // Delete old images from Cloudinary
-        for (const image of product.images) {
-          if (image.public_id) {
-            await cloudinary.uploader.destroy(image.public_id);
-          }
-        }
+        const images = Array.isArray(req.files.images) 
+          ? req.files.images 
+          : [req.files.images];
 
-        const images = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
         const uploadedImages = [];
-        
         for (const file of images) {
-          // Optimize image before upload
-          const optimizedImageBuffer = await sharp(file.tempFilePath)
-            .resize(1200, 1200, { // Max dimensions
-              fit: 'inside',
-              withoutEnlargement: true
-            })
-            .jpeg({ quality: 80 }) // Convert to JPEG with 80% quality
-            .toBuffer();
-
-          // Upload optimized image to Cloudinary
-          const result = await cloudinary.uploader.upload(`data:image/jpeg;base64,${optimizedImageBuffer.toString('base64')}`, {
-            folder: 'game-ecommerce/products',
-            resource_type: 'auto'
+          const result = await cloudinary.uploader.upload(file.tempFilePath, {
+            folder: 'game-ecommerce/products'
           });
-          
           uploadedImages.push({
             url: result.secure_url,
             public_id: result.public_id
           });
         }
-        productData.images = uploadedImages;
+        req.body.images = uploadedImages;
+      }
+
+      // Clean up any invalid data
+      const updateData = {
+        name: req.body.name,
+        description: req.body.description,
+        price: req.body.price,
+        type: req.body.type,
+        category: req.body.category,
+        specifications: req.body.specifications,
+        stock: req.body.stock === 'null' ? null : req.body.stock,
+        status: req.body.status
+      };
+
+      if (req.body.images) {
+        updateData.images = req.body.images;
       }
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
-        productData,
+        updateData,
         { new: true, runValidators: true }
       );
+
+      console.log('Product updated successfully:', updatedProduct);
 
       res.status(200).json({
         success: true,
         data: updatedProduct
       });
     } catch (error) {
-      console.error('Product update error:', error);
+      console.error('Update product error:', error);
       next(error);
     }
   }),
@@ -489,11 +495,14 @@ const productController = {
   rateProduct: asyncHandler(async (req, res, next) => {
     const { productId } = req.params;
     const { rating, review, platform } = req.body;
-
-    // Validate rating value
-    if (!rating || rating < 1 || rating > 5) {
-      return next(new ErrorResponse('Please provide a valid rating between 1 and 5', 400));
-    }
+    
+    console.log('Rating attempt:', {
+      productId,
+      userId: req.user._id,
+      rating,
+      review,
+      platform
+    });
 
     // Get product and check if it exists
     const product = await Product.findById(productId);
@@ -501,16 +510,11 @@ const productController = {
       return next(new ErrorResponse('Product not found', 404));
     }
 
-    // Check if platform is provided for games
-    if ((product.type === 'digital_game' || product.type === 'physical_game') && !platform) {
-      return next(new ErrorResponse('Platform is required for games', 400));
-    }
-
-    // Verify purchase
+    // Verify purchase with less restrictive query
     const order = await Order.findOne({
       buyer: req.user._id,
       'items.product': productId,
-      'items.status': 'completed'
+      status: { $ne: 'CANCELLED' } // Only check if order is not cancelled
     });
 
     if (!order) {
@@ -518,10 +522,9 @@ const productController = {
     }
 
     // Check for existing rating
-    const existingRating = await Product.findOne({
-      _id: productId,
-      'ratings.user': req.user._id
-    });
+    const existingRating = product.ratings?.find(
+      r => r.user.toString() === req.user._id.toString()
+    );
 
     if (existingRating) {
       return next(new ErrorResponse('You have already rated this product', 400));
@@ -536,32 +539,30 @@ const productController = {
       date: new Date()
     };
 
-    // Get current ratings and calculate new average
-    const currentRatings = product.ratings || [];
-    const newRatings = [...currentRatings, newRating];
-    const totalRatings = newRatings.length;
-    const ratingSum = newRatings.reduce((sum, r) => sum + r.rating, 0);
-    const averageRating = ratingSum / totalRatings;
+    // Initialize ratings array if it doesn't exist
+    if (!product.ratings) {
+      product.ratings = [];
+    }
 
-    // Update product using two separate fields
-    const updatedProduct = await Product.findOneAndUpdate(
-      { _id: productId },
-      {
-        $push: { ratings: newRating },
-        rating: {
-          average: averageRating,
-          count: totalRatings
-        }
-      },
-      { 
-        new: true,
-        runValidators: false
-      }
-    );
+    // Add the new rating
+    product.ratings.push(newRating);
+
+    // Update average rating
+    const totalRatings = product.ratings.length;
+    const ratingSum = product.ratings.reduce((sum, r) => sum + r.rating, 0);
+    
+    if (!product.rating) {
+      product.rating = {};
+    }
+    
+    product.rating.average = ratingSum / totalRatings;
+    product.rating.count = totalRatings;
+
+    await product.save();
 
     res.status(200).json({
       success: true,
-      data: updatedProduct
+      data: product
     });
   }),
 
@@ -750,6 +751,80 @@ const productController = {
         console.error('Get All Products Error:', error);
         return next(new ErrorResponse('Failed to fetch products', 500));
     }
+  }),
+
+  // Update product stock and sales
+  updateProductStats: asyncHandler(async (productId, quantity, isRefund = false) => {
+    console.log('Updating product stats:', { productId, quantity, isRefund });
+
+    // Get the product first to check current state
+    const product = await Product.findById(productId);
+    if (!product) {
+      throw new Error('Product not found');
+    }
+
+    console.log('Current product state:', {
+      id: product._id,
+      stock: product.stock,
+      sales: product.sales
+    });
+
+    // Initialize sales if not present
+    if (!product.sales) {
+      product.sales = {
+        total: 0,
+        lastMonth: 0,
+        lastMonthUpdated: new Date()
+      };
+    }
+
+    // Calculate new values
+    const multiplier = isRefund ? -1 : 1;
+    const newTotal = (product.sales.total || 0) + (multiplier * quantity);
+    const newLastMonth = (product.sales.lastMonth || 0) + (multiplier * quantity);
+    const newStock = product.stock - (isRefund ? -quantity : quantity);
+
+    // Update product with new values
+    const updatedProduct = await Product.findByIdAndUpdate(
+      productId,
+      {
+        $set: {
+          stock: newStock,
+          sales: {
+            total: newTotal,
+            lastMonth: newLastMonth,
+            lastMonthUpdated: new Date()
+          }
+        }
+      },
+      { 
+        new: true,
+        runValidators: true 
+      }
+    );
+
+    console.log('Updated product state:', {
+      id: updatedProduct._id,
+      stock: updatedProduct.stock,
+      sales: updatedProduct.sales
+    });
+
+    return updatedProduct;
+  }),
+
+  // Reset monthly sales (should be called by a cron job)
+  resetMonthlySales: asyncHandler(async () => {
+    const currentDate = new Date();
+    
+    await Product.updateMany(
+      {},
+      {
+        $set: {
+          'sales.lastMonth': 0,
+          'sales.lastMonthUpdated': currentDate
+        }
+      }
+    );
   })
 };
 

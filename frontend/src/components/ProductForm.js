@@ -99,6 +99,11 @@ const ProductForm = () => {
     // Create preview URLs
     const previews = files.map(file => URL.createObjectURL(file));
     setImagePreview(previews);
+
+    // Clean up old preview URLs
+    return () => {
+      previews.forEach(url => URL.revokeObjectURL(url));
+    };
   };
 
   const handleSubmit = async (e) => {
@@ -107,47 +112,60 @@ const ProductForm = () => {
     setError(null);
 
     try {
-      const formDataToSend = new FormData();
+      const submitFormData = new FormData();
       
-      // Remove seller field and images from the data to send
-      const { seller, images, ...dataToSend } = formData;
-      
-      // Format specifications based on product type
-      const specifications = {
-        platform: [],
-        genre: [],
-        releaseDate: '',
-        brand: '',
-        model: ''
-      };
-
-      if (dataToSend.type === 'digital_game' || dataToSend.type === 'physical_game') {
-        specifications.platform = formData.specifications.platform;
-        specifications.genre = formData.specifications.genre;
-        specifications.releaseDate = formData.specifications.releaseDate;
-      } else if (['console', 'pc', 'peripheral'].includes(dataToSend.type)) {
-        specifications.brand = formData.specifications.brand;
-        specifications.model = formData.specifications.model;
-      }
-
       // Append all product data
-      Object.keys(dataToSend).forEach(key => {
+      Object.keys(formData).forEach(key => {
         if (key === 'specifications') {
-          formDataToSend.append(key, JSON.stringify(specifications));
-        } else {
-          formDataToSend.append(key, dataToSend[key]);
+          // Format specifications based on product type
+          const specifications = {
+            platform: [],
+            genre: [],
+            releaseDate: '',
+            brand: '',
+            model: ''
+          };
+
+          if (formData.type === 'digital_game' || formData.type === 'physical_game') {
+            specifications.platform = formData.specifications.platform;
+            specifications.genre = formData.specifications.genre;
+            specifications.releaseDate = formData.specifications.releaseDate;
+          } else if (['console', 'pc', 'peripheral'].includes(formData.type)) {
+            specifications.brand = formData.specifications.brand;
+            specifications.model = formData.specifications.model;
+          }
+
+          submitFormData.append(key, JSON.stringify(specifications));
+        } else if (key !== 'images') { // Skip the images array in formData
+          submitFormData.append(key, formData[key]);
         }
       });
 
-      // Append new images if any
-      imageFiles.forEach(file => {
-        formDataToSend.append('images', file);
-      });
+      // Add new images
+      if (imageFiles && imageFiles.length > 0) {
+        imageFiles.forEach(image => {
+          submitFormData.append('images', image);
+        });
+      }
+
+      // Log form data for debugging
+      console.log('Submitting form data:');
+      for (let [key, value] of submitFormData.entries()) {
+        console.log(key, value);
+      }
 
       if (isEditMode) {
-        await axios.put(`/api/products/${id}`, formDataToSend);
+        await axios.put(`/api/products/${id}`, submitFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
       } else {
-        await axios.post('/api/products', formDataToSend);
+        await axios.post('/api/products', submitFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
       }
 
       navigate('/seller/products');

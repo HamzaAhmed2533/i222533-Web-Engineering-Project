@@ -7,9 +7,21 @@ const ErrorResponse = require('../utils/errorHandler');
 exports.getSellerStats = asyncHandler(async (req, res, next) => {
     try {
         const sellerId = new mongoose.Types.ObjectId(req.user._id);
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1;
         
-        // Debug log
-        console.log('Fetching stats for seller:', sellerId);
+        // Calculate last month's date
+        const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+        const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+        console.log('Fetching stats for seller:', {
+            sellerId,
+            currentMonth,
+            currentYear,
+            lastMonth,
+            lastMonthYear
+        });
 
         // Get total products (excluding deleted)
         const totalProducts = await Product.countDocuments({ 
@@ -17,21 +29,33 @@ exports.getSellerStats = asyncHandler(async (req, res, next) => {
             status: { $ne: 'deleted' }
         });
 
-        console.log('Total products:', totalProducts);
-
-        // Get all sales data for this seller - simplified query first
-        const salesData = await Sales.find({ seller: sellerId });
-        
-        console.log('Sales data found:', salesData);
-
-        // Calculate totals manually instead of using aggregation
-        let totalUnitsSold = 0;
-        let totalMoneyEarned = 0;
-
-        salesData.forEach(sale => {
-            totalUnitsSold += sale.totalUnits || 0;
-            totalMoneyEarned += sale.totalRevenue || 0;
+        // Get current month's sales
+        const currentMonthSales = await Sales.findOne({
+            seller: sellerId,
+            year: currentYear,
+            month: currentMonth
         });
+
+        // Get last month's sales
+        const lastMonthSales = await Sales.findOne({
+            seller: sellerId,
+            year: lastMonthYear,
+            month: lastMonth
+        });
+
+        // Get all-time sales totals
+        const allTimeSales = await Sales.aggregate([
+            {
+                $match: { seller: sellerId }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalUnits: { $sum: '$totalUnits' },
+                    totalRevenue: { $sum: '$totalRevenue' }
+                }
+            }
+        ]);
 
         // Get product type distribution
         const productTypes = await Product.aggregate([
@@ -49,18 +73,32 @@ exports.getSellerStats = asyncHandler(async (req, res, next) => {
             }
         ]);
 
+        // Get best selling products
+        const bestSellers = await Product.find({
+            seller: sellerId,
+            status: { $ne: 'deleted' }
+        })
+        .sort({ 'sales.total': -1 })
+        .limit(5)
+        .select('name type sales');
+
         const stats = {
             totalProducts,
-            totalRevenue: totalUnitsSold || 0,                 // Number of units sold
-            totalSales: totalMoneyEarned?.toFixed(2) || 0,    // Money earned
-            currentMonthSales: 0,  // We'll add these back once basic stats work
-            currentMonthRevenue: 0,
-            lastMonthSales: 0,
-            lastMonthRevenue: 0,
+            totalRevenue: allTimeSales[0]?.totalRevenue?.toFixed(2) || 0,
+            totalSales: allTimeSales[0]?.totalUnits || 0,
+            currentMonthSales: currentMonthSales?.totalUnits || 0,
+            currentMonthRevenue: currentMonthSales?.totalRevenue?.toFixed(2) || 0,
+            lastMonthSales: lastMonthSales?.totalUnits || 0,
+            lastMonthRevenue: lastMonthSales?.totalRevenue?.toFixed(2) || 0,
             productTypes: productTypes.reduce((acc, type) => {
                 acc[type._id] = type.count;
                 return acc;
-            }, {})
+            }, {}),
+            bestSellers: bestSellers.map(product => ({
+                name: product.name,
+                type: product.type,
+                totalSales: product.sales?.total || 0
+            }))
         };
 
         console.log('Final stats:', stats);
@@ -78,18 +116,88 @@ exports.getSellerStats = asyncHandler(async (req, res, next) => {
 exports.getSellerAnalytics = asyncHandler(async (req, res, next) => {
     try {
         const sellerId = new mongoose.Types.ObjectId(req.user._id);
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
         
-        // Return placeholder data for now
+        // Get monthly sales for the current year
+        const monthlySales = await Sales.aggregate([
+            {
+                $match: {
+                    seller: sellerId,
+                    year: currentYear
+                }
+            },
+            {
+                $sort: { month: 1 }
+            },
+            {
+                $project: {
+                    month: '$month',
+                    revenue: '$totalRevenue',
+                    units: '$totalUnits'
+                }
+            }
+        ]);
+
+        // Get product performance
+        const productPerformance = await Product.aggregate([
+            {
+                $match: {
+                    seller: sellerId,
+                    status: { $ne: 'deleted' }
+                }
+            },
+            {
+                $sort: { 'sales.total': -1 }
+            },
+            {
+                $limit: 10
+            },
+            {
+                $project: {
+                    name: 1,
+                    type: 1,
+                    totalSales: '$sales.total',
+                    revenue: { $multiply: ['$price', '$sales.total'] }
+                }
+            }
+        ]);
+
+        // Get category distribution
+        const categoryDistribution = await Product.aggregate([
+            {
+                $match: {
+                    seller: sellerId,
+                    status: { $ne: 'deleted' }
+                }
+            },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 },
+                    revenue: {
+                        $sum: {
+                            $multiply: ['$price', '$sales.total']
+                        }
+                    }
+                }
+            }
+        ]);
+
         res.status(200).json({
             success: true,
             data: {
-                monthlySales: [],
-                productPerformance: [],
-                categoryDistribution: {},
+                monthlySales,
+                productPerformance,
+                categoryDistribution,
                 revenueStats: {
-                    totalRevenue: 0,
-                    averageOrderValue: 0,
-                    monthlyGrowth: 0
+                    totalRevenue: monthlySales.reduce((sum, month) => sum + (month.revenue || 0), 0),
+                    averageOrderValue: monthlySales.reduce((sum, month) => sum + (month.revenue || 0), 0) / 
+                                     monthlySales.reduce((sum, month) => sum + (month.units || 0), 0) || 0,
+                    monthlyGrowth: monthlySales.length > 1 ? 
+                        ((monthlySales[monthlySales.length - 1]?.revenue || 0) - 
+                         (monthlySales[monthlySales.length - 2]?.revenue || 0)) /
+                         (monthlySales[monthlySales.length - 2]?.revenue || 1) * 100 : 0
                 }
             }
         });

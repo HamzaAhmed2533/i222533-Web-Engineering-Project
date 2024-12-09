@@ -138,11 +138,11 @@ const SellerDashboard = () => {
           </div>
           <div className="stat-card">
             <h3>Total Sales</h3>
-            <p>${stats.totalSales}</p>
+            <p>{stats.totalSales}</p>
           </div>
           <div className="stat-card">
             <h3>Total Revenue</h3>
-            <p>{stats.totalRevenue}</p>
+            <p>${stats.totalRevenue}</p>
           </div>
           <div className="stat-card">
             <h3>Last Month Sales</h3>
@@ -150,7 +150,7 @@ const SellerDashboard = () => {
           </div>
           <div className="stat-card">
             <h3>Last Month Revenue</h3>
-            <p>{stats.lastMonthRevenue}</p>
+            <p>${stats.lastMonthRevenue}</p>
           </div>
         </div>
 

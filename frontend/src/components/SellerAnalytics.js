@@ -36,7 +36,7 @@ const SellerAnalytics = () => {
   const [analyticsData, setAnalyticsData] = useState({
     monthlySales: [],
     productPerformance: [],
-    categoryDistribution: {},
+    categoryDistribution: [],
     revenueStats: {
       totalRevenue: 0,
       averageOrderValue: 0,
@@ -51,7 +51,18 @@ const SellerAnalytics = () => {
   const fetchAnalytics = async () => {
     try {
       const response = await axios.get('/api/seller/analytics');
-      setAnalyticsData(response.data.data);
+      console.log('Raw analytics data:', response.data.data);
+      
+      // Convert categoryDistribution object to array if needed
+      const data = response.data.data;
+      if (data.categoryDistribution && !Array.isArray(data.categoryDistribution)) {
+        data.categoryDistribution = Object.entries(data.categoryDistribution).map(([category, value]) => ({
+          category,
+          value
+        }));
+      }
+      
+      setAnalyticsData(data);
       setLoading(false);
     } catch (err) {
       console.error('Analytics fetch error:', err);
@@ -83,28 +94,50 @@ const SellerAnalytics = () => {
 
   // Product Performance Chart Data
   const productChartData = {
-    labels: analyticsData.productPerformance.map(item => item.name),
+    labels: analyticsData.productPerformance?.map(item => item.name) || [],
     datasets: [{
       label: 'Units Sold',
-      data: analyticsData.productPerformance.map(item => item.unitsSold),
-      backgroundColor: 'rgba(54, 162, 235, 0.5)',
+      data: analyticsData.productPerformance?.map(item => item.unitsSold) || [],
+      backgroundColor: 'rgba(54, 162, 235, 0.8)',
+      borderColor: 'rgba(54, 162, 235, 1)',
+      borderWidth: 1
     }]
   };
 
+  // For debugging, log the actual data
+  console.log('Product Chart Data:', {
+    labels: productChartData.labels,
+    data: productChartData.datasets[0].data
+  });
+
   // Category Distribution Chart Data
   const categoryChartData = {
-    labels: Object.keys(analyticsData.categoryDistribution),
+    labels: analyticsData.categoryDistribution?.map(item => item.category) || [],
     datasets: [{
-      data: Object.values(analyticsData.categoryDistribution),
+      data: analyticsData.categoryDistribution?.map(item => item.value) || [],
       backgroundColor: [
-        'rgba(255, 99, 132, 0.5)',
-        'rgba(54, 162, 235, 0.5)',
-        'rgba(255, 206, 86, 0.5)',
-        'rgba(75, 192, 192, 0.5)',
-        'rgba(153, 102, 255, 0.5)',
+        'rgba(255, 99, 132, 0.8)',
+        'rgba(54, 162, 235, 0.8)',
+        'rgba(255, 206, 86, 0.8)',
+        'rgba(75, 192, 192, 0.8)',
+        'rgba(153, 102, 255, 0.8)',
       ],
+      borderColor: [
+        'rgba(255, 99, 132, 1)',
+        'rgba(54, 162, 235, 1)',
+        'rgba(255, 206, 86, 1)',
+        'rgba(75, 192, 192, 1)',
+        'rgba(153, 102, 255, 1)',
+      ],
+      borderWidth: 1
     }]
   };
+
+  // For debugging, log the category data
+  console.log('Category Chart Data:', {
+    labels: categoryChartData.labels,
+    data: categoryChartData.datasets[0].data
+  });
 
   if (loading) return <div className="loading">Loading analytics...</div>;
   if (error) return <div className="error">{error}</div>;
@@ -117,15 +150,15 @@ const SellerAnalytics = () => {
       <div className="stats-cards">
         <div className="stat-card">
           <h3>Total Revenue</h3>
-          <p>${analyticsData.revenueStats.totalRevenue.toFixed(2)}</p>
+          <p>${analyticsData.revenueStats?.totalRevenue?.toFixed(2) || '0.00'}</p>
         </div>
         <div className="stat-card">
           <h3>Average Order Value</h3>
-          <p>${analyticsData.revenueStats.averageOrderValue.toFixed(2)}</p>
+          <p>${analyticsData.revenueStats?.averageOrderValue?.toFixed(2) || '0.00'}</p>
         </div>
         <div className="stat-card">
           <h3>Monthly Growth</h3>
-          <p>{analyticsData.revenueStats.monthlyGrowth}%</p>
+          <p>{analyticsData.revenueStats?.monthlyGrowth?.toFixed(1) || '0'}%</p>
         </div>
       </div>
 
@@ -148,35 +181,70 @@ const SellerAnalytics = () => {
       {/* Product Performance Chart */}
       <div className="chart-container">
         <h2>Product Performance</h2>
-        <Bar 
-          data={productChartData}
-          options={{
-            responsive: true,
-            scales: {
-              y: {
-                beginAtZero: true
-              }
-            }
-          }}
-        />
+        {analyticsData.productPerformance?.length > 0 ? (
+          <div className="chart-wrapper">
+            <Bar 
+              data={productChartData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: {
+                      color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                      color: '#fff'
+                    }
+                  },
+                  x: {
+                    grid: {
+                      display: false
+                    },
+                    ticks: {
+                      color: '#fff'
+                    }
+                  }
+                },
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <p className="no-data">No product performance data available</p>
+        )}
       </div>
 
       {/* Category Distribution Chart */}
       <div className="chart-container">
         <h2>Category Distribution</h2>
-        <div className="doughnut-container">
-          <Doughnut 
-            data={categoryChartData}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: {
-                  position: 'right',
+        {analyticsData.categoryDistribution?.length > 0 ? (
+          <div className="chart-wrapper">
+            <Doughnut 
+              data={categoryChartData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'right',
+                    labels: {
+                      color: '#fff',
+                      padding: 20
+                    }
+                  }
                 }
-              }
-            }}
-          />
-        </div>
+              }}
+            />
+          </div>
+        ) : (
+          <p className="no-data">No category distribution data available</p>
+        )}
       </div>
     </div>
   );

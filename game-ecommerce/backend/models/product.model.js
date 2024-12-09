@@ -40,25 +40,20 @@ const productSchema = new mongoose.Schema({
     default: 0
   },
   specifications: {
-    platform: {
-      type: [String],
-      default: undefined
-    },
-    genre: {
-      type: [String],
-      default: undefined
-    },
-    releaseDate: {
-      type: Date,
-      default: undefined
-    },
-    brand: {
-      type: String,
-      default: undefined
-    },
-    model: {
-      type: String,
-      default: undefined
+    type: Object,
+    required: true,
+    validate: {
+      validator: function(specs) {
+        if (this.type === 'digital_game' || this.type === 'physical_game') {
+          return Array.isArray(specs.platform) && 
+                 specs.platform.length > 0 && 
+                 Array.isArray(specs.genre) && 
+                 specs.genre.length > 0 && 
+                 specs.releaseDate;
+        }
+        return true;
+      },
+      message: 'Platform, genre, and release date are required for games'
     }
   },
   ratings: [{
@@ -99,11 +94,17 @@ const productSchema = new mongoose.Schema({
   sales: {
     total: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0
     },
     lastMonth: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0
+    },
+    lastMonthUpdated: {
+      type: Date,
+      default: Date.now
     }
   },
   status: {
@@ -154,6 +155,14 @@ productSchema.pre('save', function(next) {
 
   if (this.type !== 'digital_game' && !this.stock) {
     return next(new Error('Stock is required for physical products'));
+  }
+
+  if (this.sales === '[object Object]' || !this.sales) {
+    this.sales = {
+      total: 0,
+      lastMonth: 0,
+      lastMonthUpdated: new Date()
+    };
   }
 
   next();

@@ -2,14 +2,16 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const fileUpload = require('express-fileupload');
+const productRoutes = require('./routes/product.routes');
 const errorHandler = require('./middleware/error');
 const connectDB = require('./config/db');
+const sellerRoutes = require('./routes/seller.routes');
 
 // Route imports
-const productRoutes = require('./routes/product.routes');
 const buyerRoutes = require('./routes/buyer.routes');
 const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/order.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 // Load env vars
 require('dotenv').config();
@@ -33,13 +35,10 @@ if (process.env.NODE_ENV === 'development') {
 
 // File upload middleware
 app.use(fileUpload({
-  limits: { 
-    fileSize: 10 * 1024 * 1024, // 10MB max file size
-  },
-  abortOnLimit: true,
-  createParentPath: true,
   useTempFiles: true,
-  tempFileDir: '/tmp/'
+  tempFileDir: '/tmp/',
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  abortOnLimit: true
 }));
 
 // Add this before your routes
@@ -53,6 +52,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/buyer', buyerRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/seller/analytics', analyticsRoutes);
+app.use('/api/seller', sellerRoutes);
 // Add other routes here...
 
 // Error handler
